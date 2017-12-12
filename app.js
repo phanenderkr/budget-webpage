@@ -3,16 +3,24 @@ var budgetController = (function () {
 
     var Expense = function (id, description, value) {
         this.id = id;
-        this.description =description ;
+        this.inputDescription =description ;
         this.value = value;
     };
 
     var Income = function (id, description, value) {
         this.id = id;
-        this.description =description ;
+        this.inputDescription =description ;
         this.value = value;
     };
 
+    var calculateTotal = function (type) {
+        var sum = 0;
+        data.allItems[type].forEach(function (current) {
+            sum += current.value;
+        });
+        data.totals[type] = sum;
+    };
+    
     var data ={
         allItems:{
             exp: [],
@@ -21,7 +29,9 @@ var budgetController = (function () {
         totals:{
             exp: 0,
             inc: 0
-        }
+        },
+        budget:0,
+        percentage: -1
     };
 
     return {
@@ -48,6 +58,34 @@ var budgetController = (function () {
             //returning the item
             return newItem;
         },
+
+        calculateBudget: function(){
+
+            //1. Calculate total income and expenses
+            calculateTotal("exp");
+            calculateTotal("inc");
+
+            //2. Calculate budget= income - expenses
+            data.budget = data.totals.inc - data.totals.exp;
+
+            //3. calculate the percentage of income spent that we spent
+            if(data.totals.inc>0){
+                data.percentage = Math.round((data.totals.exp * 100 )/ data.totals.inc);
+            }else{
+                data.percentage=-1;
+            }
+
+        },
+        
+        getBudget: function () {
+            return {
+                budget: data.budget,
+                totalIncome: data.totals.inc,
+                totalExpenses: data.totals.exp,
+                percentage: data.percentage
+            };
+        },
+
         //just for testing not for deployment
         testing: function () {
             console.log(data);
@@ -67,11 +105,15 @@ var UIController = (function () {
     //classes
     var DOMStrings = {
         inputType: ".add__type",
-        description: ".add__description",
+        inputDescription: ".add__description",
         value: ".add__value",
         tickBtn: ".add__btn",
         incomesContainer: ".income__list",
-        expensesContainer: ".expenses__list"
+        expensesContainer: ".expenses__list",
+        budgetLabel: ".budget__value",
+        incomeLabel: ".budget__income--value",
+        expensesLabel: ".budget__expenses--value",
+        percentageLabel: ".budget__expenses--percentage"
     };
 
     // returning object
@@ -79,8 +121,8 @@ var UIController = (function () {
         getInput: function () {
             return{
                 type : document.querySelector(DOMStrings.inputType).value, // will be inc or exp
-                description : document.querySelector(DOMStrings.description).value,
-                value : document.querySelector(DOMStrings.value).value
+                inputDescription : document.querySelector(DOMStrings.inputDescription).value,
+                value : parseFloat(document.querySelector(DOMStrings.value).value)
             };
         },
         getDOMStrings: function () {
@@ -94,24 +136,45 @@ var UIController = (function () {
             if(type==="inc"){
                 adjacentClass = DOMStrings.incomesContainer;
 
-                html = '<div class="item clearfix" id="income-%id%"> <div class="item__description">%description%</div>                 <div class="right clearfix"> <div class="item__value"> %value%</div> <div class="item__delete">                 <button class="item__delete--btn"><i class="ion-ios-close-outline"></i></button> </div> </div> </div>' ;
+                html = '<div class="item clearfix" id="income-%id%"> <div class="item__description">%inputDescription%</div>                 <div class="right clearfix"> <div class="item__value"> %value%</div> <div class="item__delete">                 <button class="item__delete--btn"><i class="ion-ios-close-outline"></i></button> </div> </div> </div>' ;
 
             }else if(type === "exp"){
 
                 adjacentClass = DOMStrings.expensesContainer;
 
-                html= '<div class="item clearfix" id="expense-%id%"> <div class="item__description">%description%</div>                 <div class="right clearfix"> <div class="item__value"> %value%</div> <div class="item__percentage">21%</div> <div class="item__delete"> <button class="item__delete--btn"><i class="ion-ios-close-outline"></i></button> </div> </div> </div>' ;
+                html= '<div class="item clearfix" id="expense-%id%"> <div class="item__description">%inputDescription%</div>                 <div class="right clearfix"> <div class="item__value"> %value%</div> <div class="item__percentage">21%</div> <div class="item__delete"> <button class="item__delete--btn"><i class="ion-ios-close-outline"></i></button> </div> </div> </div>' ;
 
             }
 
 
             //2. Replace the placeholder text
             newHtml = html.replace("%id%", obj.id);
-            newHtml = newHtml.replace("%description%", obj.description);
+            newHtml = newHtml.replace("%inputDescription%", obj.inputDescription);
             newHtml = newHtml.replace("%value%", obj.value);
 
             //3. Insert html into the DOM
             document.querySelector(adjacentClass).insertAdjacentHTML("beforeend", newHtml);
+        },
+        clearFields: function () {
+            var fields, fieldsArray;
+            fields = document.querySelectorAll(DOMStrings.value + "," + DOMStrings.inputDescription);
+            fieldsArray =Array.prototype.slice.call(fields);
+
+            fieldsArray.forEach(function (current, index, array) {
+                current.value = "";
+            });
+
+            fieldsArray[0].focus();
+        },
+        displayBudget: function (obj) {
+            document.querySelector(DOMStrings.budgetLabel).textContent = obj.budget;
+            document.querySelector(DOMStrings.incomeLabel).textContent = obj.totalIncome;
+            document.querySelector(DOMStrings.expensesLabel).textContent = obj.totalExpenses;
+            if(obj.percentage>0){
+                document.querySelector(DOMStrings.percentageLabel).textContent = obj.percentage + "%";
+            }else{
+                document.querySelector(DOMStrings.percentageLabel).textContent = "--";
+            }
         }
         
     };
@@ -124,21 +187,38 @@ var UIController = (function () {
 
 var controller = (function (budgetCntr, UICntrl) {
 
+    var updateBudget = function () {
+
+        //1. Calculate budget
+        budgetCntr.calculateBudget();
+
+        //2. Return the budget
+        var budget = budgetCntr.getBudget();
+
+        //3. Display the budget to the UI
+        UICntrl.displayBudget(budget);
+
+    };
+
     var controlAddItem = function () {
 
         //1. Get input data
         var input = UICntrl.getInput();
-        console.log(input);
 
-        //2. Add to budget data controller
-        var newItem = budgetCntr.addItem(input.type, input.description, input.value);
+        if(!isNaN(input.value)&& input.inputDescription!=="" && input.value >0){
+            //2. Add to budget data controller
+            var newItem = budgetCntr.addItem(input.type, input.inputDescription, input.value);
 
-        //3. Add item to the UI
-        console.log(newItem.type);
-        UICntrl.addListItem(newItem,input.type);
-        //4. Calculate budget
+            //3. Add item to the UI
+            UICntrl.addListItem(newItem,input.type);
 
-        //5. Display the budget to the UI
+            //4. Clear the fields
+            UICntrl.clearFields();
+
+            //5. Calculate and update the budget
+            updateBudget();
+        }
+
 
     };
 
@@ -154,11 +234,18 @@ var controller = (function (budgetCntr, UICntrl) {
             }
 
         });
+
+        
     };
 
     return{
         init: function () {
             setupEventListeners();
+            UICntrl.displayBudget({
+                budget: 0,
+                totalIncome: 0,
+                totalExpenses: 0,
+                percentage: 0});
         }
     }
 
